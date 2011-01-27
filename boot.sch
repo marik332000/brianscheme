@@ -657,11 +657,12 @@ list"
 
 (define (file-exists? name)
   "Return #t if file exists, otherwise false."
-  (let ((port (open-input-port name)))
+  (assert-types (name string?))
+  (let ((port (%open-input-port name)))
     (if (eof-object? port)
         #f
         (begin
-          (close-input-port port)
+          (%close-input-port port)
           #t))))
 
 (define (find-library name . paths)
@@ -676,16 +677,17 @@ list"
 
 (define (load name)
   "read and evaluate all forms in a file called name"
+  (assert-types (name string?))
   (let ((file (find-library name)))
     (if file
-        (letrec ((in (open-input-port file))
+        (letrec ((in (%open-input-port file))
                  (iter (lambda (form)
                          (unless (eof-object? form)
                            (eval form)
-                           (iter (read-port in))))))
+                           (iter (%read-port in))))))
           (if (eof-object? in)
               (throw-error "failed to open" file)
-              (iter (read-port in)))
+              (iter (%read-port in)))
           #t)
         (throw-error "could not find" name))))
 
@@ -715,7 +717,8 @@ list"
 (define (newline . port)
   "write a newline to port (defaults to stdout)"
   (let ((port (car-else port stdout)))
-    (write-char #\newline port)))
+    (assert-types (port output-port?))
+    (%write-char #\newline port)))
 
 (define (write-with-spaces port lst)
   "write a series of forms to port"
@@ -735,10 +738,11 @@ list"
 
 (define (display-string str port)
   "display a string without quotation marks"
+  (assert-types (port output-port?))
   (let loop ((idx 0))
     (let ((char (string-ref str idx)))
       (unless (%fixnum-equal (char->integer char) 0)
-	      (write-char char port)
+	      (%write-char char port)
 	      (loop (%fixnum-add idx 1))))))
 
 (define (number? obj)
@@ -749,17 +753,19 @@ list"
   "write form to port (stdout default) in display format. strings will
 not be quoted or escaped."
   (let ((port (car-else port stdout)))
+    (assert-types (port output-port?))
     (cond
      ((string? obj) (display-string obj port))
      ((number? obj) (display-string (number->string obj) port))
-     ((char? obj) (write-char obj port))
-     (else (write-port obj port)))))
+     ((char? obj) (%write-char obj port))
+     (else (%write-port obj port)))))
 
 (define (call-with-input-file file proc)
   "open file and pass the port to proc, close when proc returns"
-  (let* ((in (open-input-port file))
+  (assert-types (file string?))
+  (let* ((in (%open-input-port file))
 	 (result (proc in)))
-    (close-input-port in)
+    (%close-input-port in)
     result))
 
 (define (call-with-output-file file proc)
@@ -776,7 +782,7 @@ not be quoted or escaped."
 
 (define (peek-char port)
   (let ((ch (read-char port)))
-    (unread-char port ch)
+    (unread-char ch port)
     ch))
 
 (define (atom? obj)
@@ -1172,7 +1178,7 @@ returns true"
  ;; interpreter to do that
  (begin
    (display "Compiling compiler..." stderr)
-   (write-char #\newline stdout)
+   (%write-char #\newline stdout)
 
    ;; we still need the interpreter to run the compiler until we get
    ;; the compiler compiled. we override compile file to make use of
@@ -1182,12 +1188,12 @@ returns true"
      "read and compile all forms in file"
      (let ((file (find-library name)))
        (if file
-           (letrec ((in (open-input-port file))
+           (letrec ((in (%open-input-port file))
                     (iter (lambda (form)
                             (unless (eof-object? form)
                               ;;(write-port `((compiler ',form)) stdout)
                               (eval `((compiler ',form)))
-                              (iter (read-port in))))))
+                              (iter (%read-port in))))))
              (if (eof-object? in)
                  (throw-error "failed to open" file)
                  (iter (read-port in)))
@@ -1223,7 +1229,7 @@ returns true"
  ;; the world
  (begin
    (display "Bootstrapping compiler..." stderr)
-   (write-char #\newline stdout)
+   (%write-char #\newline stdout)
 
    (require 'compiler)
    (compile-file "boot.sch")

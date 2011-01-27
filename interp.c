@@ -597,8 +597,8 @@ DEFUN1(read_char_proc) {
 }
 
 DEFUN1(unread_char_proc) {
-  object *port = FIRST;
-  object *ch = SECOND;
+  object *port = SECOND;
+  object *ch = FIRST;
 
   ungetc(CHAR(ch), INPUT(port));
   return true;
@@ -1325,16 +1325,16 @@ void init_prim_environment(object * env) {
 
   add_procedure("eq?", is_eq_proc);
 
-  add_procedure("open-output-port", open_output_port_proc);
-  add_procedure("open-input-port", open_input_port_proc);
-  add_procedure("close-output-port", close_output_port_proc);
-  add_procedure("close-input-port", close_input_port_proc);
+  add_procedure("%open-output-port", open_output_port_proc);
+  add_procedure("%open-input-port", open_input_port_proc);
+  add_procedure("%close-output-port", close_output_port_proc);
+  add_procedure("%close-input-port", close_input_port_proc);
 
-  add_procedure("write-port", write_proc);
-  add_procedure("read-port", read_proc);
-  add_procedure("read-char", read_char_proc);
-  add_procedure("write-char", write_char_proc);
-  add_procedure("unread-char", unread_char_proc);
+  add_procedure("%write-port", write_proc);
+  add_procedure("%read-port", read_proc);
+  add_procedure("%read-char", read_char_proc);
+  add_procedure("%write-char", write_char_proc);
+  add_procedure("%unread-char", unread_char_proc);
 
   add_procedure("eval", eval_proc);
   add_procedure("apply", apply_proc);

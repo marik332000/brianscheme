@@ -477,7 +477,7 @@ about its value and optionally with more forms following"
 
 (define (comp-repl)
   (display "comp-repl> ")
-  (let ((result ((compiler (read-port stdin)))))
+  (let ((result ((compiler (%read-port stdin)))))
     (write-port result stdout)
     (newline)
     (unless (eq? result 'quit)
@@ -496,14 +496,14 @@ about its value and optionally with more forms following"
   "read and compile all forms in file"
   (let ((file (find-library name)))
     (if file
-        (letrec ((in (open-input-port file))
+        (letrec ((in (%open-input-port file))
                  (iter (lambda (form)
                          (unless (eof-object? form)
                            ((compiler form))
-                           (iter (read-port in))))))
+                           (iter (%read-port in))))))
           (if (eof-object? in)
               (throw-error "compiler failed to open" file)
-              (iter (read-port in)))
+              (iter (%read-port in)))
           #t)
         (throw-error "failed to find" name))))
 
