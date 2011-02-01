@@ -102,6 +102,11 @@ typedef struct global_state {
   object *env;
   object *vm_env;
 
+  /* special one-time objects */
+  object *stdin_port;
+  object *stdout_port;
+  object *stderr_port;
+
   /* FFI */
   object *free_ptr_fn;
 

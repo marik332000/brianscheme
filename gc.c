@@ -329,6 +329,10 @@ void gc_init(void) {
   g->Old_Heap_Objects.tail = NULL;
   g->Old_Heap_Objects.num_objects = 0;
 
+  g->stdin_port = NULL;
+  g->stdout_port = NULL;
+  g->stderr_port = NULL;
+
   extend_heap(1000);
 
   /* everything is free right now */
@@ -465,6 +469,17 @@ void finalize_object(object * head) {
     break;
   case HASH_TABLE:
     htb_destroy(HTAB(head));
+    break;
+  case INPUT_PORT:
+    if (head->data.input_port.opened)
+      fclose(head->data.input_port.stream);
+    head->data.input_port.opened = 0;
+    break;
+  case OUTPUT_PORT:
+    if (head->data.output_port.opened)
+      fclose(head->data.output_port.stream);
+    head->data.output_port.opened = 0;
+    break;
   default:
     break;
   }

@@ -302,7 +302,7 @@ char is_compiled_proc(object * obj) {
 }
 
 object *make_input_port(FILE * stream, char is_pipe) {
-  object *obj = alloc_object(0);
+  object *obj = alloc_object(1);
 
   obj->type = INPUT_PORT;
   obj->data.input_port.stream = stream;
@@ -352,7 +352,7 @@ char is_eof_object(object * obj) {
 }
 
 object *make_output_port(FILE * stream, char is_pipe) {
-  object *obj = alloc_object(0);
+  object *obj = alloc_object(1);
 
   obj->type = OUTPUT_PORT;
   obj->data.output_port.stream = stream;
