@@ -685,6 +685,26 @@ DEFUN1(flush_output_proc) {
   return AS_BOOL(fflush(OUTPUT(FIRST)) == 0);
 }
 
+DEFUN1(make_pipe_proc) {
+  int fds[2];
+  int r = pipe(fds);
+  if (r != 0)
+    return g->false;
+  FILE *in = fdopen(fds[0], "r");
+  FILE *out = fdopen(fds[1], "w");
+  object *port_in = NULL, *port_out = NULL, *pair = NULL;
+  push_root(&port_in);
+  push_root(&port_out);
+  push_root(&pair);
+  port_in = make_input_port(in, 0);
+  port_out = make_output_port(out, 0);
+  pair = cons(port_in, port_out);
+  pop_root(&port_in);
+  pop_root(&port_out);
+  pop_root(&pair);
+  return pair;
+}
+
 DEFUN1(port_dump_proc) {
   FILE *in = INPUT(FIRST);
   FILE *out = OUTPUT(SECOND);
