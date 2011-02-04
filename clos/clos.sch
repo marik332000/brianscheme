@@ -213,14 +213,14 @@
   (%allocate-instance-internal
    class #t
    (lambda args
-     (error "An instance isn't a procedure -- can't apply it."))
+     (throw-error "An instance isn't a procedure -- can't apply it."))
    nfields))
 
 (define (%allocate-entity class nfields)
   (%allocate-instance-internal
    class #f
    (lambda args
-     (error "Tried to call an entity before its proc is set."))
+     (throw-error "Tried to call an entity before its proc is set."))
    nfields))
 
 ;; Instances and entities are actually closures over a vector. the
@@ -262,7 +262,7 @@
   (define (%set-instance-proc! closure proc)
     (let ((vector (get-vector closure)))
       (if (vector-ref vector 1)
-	  (error "Can't set procedure of instance.")
+	  (throw-error "Can't set procedure of instance.")
 	  (vector-set! vector 0 proc))))
 
   (define (%instance-ref closure index)
@@ -304,7 +304,8 @@
    ((input-port? x)  <input-port>)
    ((output-port? x) <output-port>)
    ((syntax-procedure? x) <syntax-procedure>)
-   ((procedure? x)   <procedure>)))
+   ((procedure? x)   <procedure>)
+   ((directory-stream? x) <directory-stream>)))
 
 
 ;
@@ -416,7 +417,7 @@
 
 	(if entry
 	    entry
-	    (error "No slot" slot-name "in instances of" class))))))
+	    (throw-error "No slot" slot-name "in instances of" class))))))
 
 ;
 ; Given that the early version of MAKE is allowed to call accessors on
@@ -729,13 +730,13 @@
 	       (args args))
       (cond
        ((and (null? specls1) (null? specls2))
-	(error
+	(throw-error
 	 "Two methods are equally specific."))
        ((or  (null? specls1) (null? specls2))
-	(error
+	(throw-error
 	 "Two methods have a different number of specializers."))
        ((null? args)
-	(error
+	(throw-error
 	 "Fewer arguments than specializers."))
        (else
 	(let ((c1  (car specls1))
@@ -754,7 +755,7 @@
 	      (lambda (tail)
 		(lambda ()
 		  (if (null? tail)
-		      (error "No applicable methods/next methods.")
+		      (throw-error "No applicable methods/next methods.")
 		      (apply (method-procedure (car tail))
 			     (cons (one-step (cdr tail)) args)))))))
       ((one-step methods)))))
@@ -834,7 +835,7 @@
   (call-next-method)
   (slot-set! generic 'methods '())
   (%set-instance-proc! generic
-		       (lambda args (error "Has no methods."))))
+		       (lambda args (throw-error "Has no methods."))))
 
 (define-method (initialize (method <method>) initargs)
   (call-next-method)
@@ -930,21 +931,13 @@
 (define <symbol>      (make-primitive-class nil '<symbol>))
 (define <boolean>     (make-primitive-class nil '<boolean>))
 (define <procedure>   (make-primitive-class <procedure-class> '<procedure>))
-
 (define <syntax-procedure>
-  (make <class>
-    'direct-supers (list <procedure>)
-    'class-name '<syntax-procedure>))
+  (make-primitive-class <procedure-class> '<syntax-procedure>))
 
 (define <compiled-procedure>
-  (make <class>
-    'direct-supers (list <procedure>)
-    'class-name '<compiled-procedure>))
-
+  (make-primitive-class <procedure-class> '<compiled-procedure>))
 (define <compiled-syntax-procedure>
-  (make <class>
-    'direct-supers (list <compiled-procedure>)
-    'class-name '<compiled-syntax-procedure>))
+  (make-primitive-class <procedure-class> '<compiled-syntax-procedure>))
 
 (define <number>      (make-primitive-class nil '<number>))
 (define <integer>     (make <class>
@@ -960,6 +953,7 @@
 (define <alien>       (make-primitive-class nil '<alien>))
 (define <input-port>  (make-primitive-class nil '<input-port>))
 (define <output-port> (make-primitive-class nil '<output-port>))
+(define <directory-stream> (make-primitive-class nil '<directory-stream>))
 
 
 ; now we can override this since all of our primitive classes

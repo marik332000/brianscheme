@@ -20,8 +20,17 @@
 ; appropriate to start building up the rest of the language niceties
 ; that weren't essential for bootstrapping.
 
+;; define a brutal restart handler. clos-repl or a user script
+;; candefine a more friendly one later
+(set-error-restart!
+ (lambda (ex)
+   (display "VM got exception: " stderr)
+   (display ex stderr)
+   (write-char #\newline stderr)
+   (exit 1)))
+
 (display "Building stdlib..." stderr)
-(write-char #\newline stdout)
+(write-char #\newline stderr)
 
 (define (list* . args)
   (letrec ((chase
@@ -34,14 +43,43 @@
 (define (apply* proc . args)
   (apply proc (apply list* args)))
 
-(require 'conditions)
-(require 'io)
-(require 'math)
-(require 'string)
+(define (map-vector fn vector)
+  (let* ((len (vector-length vector))
+	 (result (make-vector len nil)))
+    (dotimes (idx len)
+      (vector-set! result idx
+		   (fn (vector-ref vector idx))))
+    result))
+
+(define (vector->list vector)
+  (let ((result nil)
+	(len (vector-length vector)))
+    (dotimes (idx len)
+      (push! (vector-ref vector idx) result))
+    (reverse result)))
+
+(define (system cmd)
+  "Run command using the system's shell."
+  (assert-types (cmd string?))
+  (%system cmd))
+
+(define (getenv var)
+  "Get an environmental variable."
+  (assert-types (var string?))
+  (%getenv var))
+
+(require 'cl-defun)
 (require 'point-free)
+(require 'string)
+(require 'io)
+(require 'conditions)
+(require 'math)
 (require 'clos)
+(require 'read)
 (require 'clos-repl)
+(require 'list)
 (require 'image)
+(require 'random)
 (provide 'stdlib)
 
 (define (repl-or-script)

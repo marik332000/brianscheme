@@ -1,4 +1,4 @@
-TARGETS = bsch bschsfx
+TARGETS = bsch bsch.preboot bschsfx
 
 default: $(TARGETS)
 
@@ -9,13 +9,9 @@ OBJECTS = $(subst .c,.o,$(SOURCES))
 
 IMAGE = boot.img
 
-LDFLAGS = -leditline -lffi -ldl -lm -rdynamic
+LDFLAGS = -lffi -ldl -lm -rdynamic
 
 CC = gcc
-
-ifeq ($(NO_READLINE),1)
-	EXTFLAGS=-DNO_READLINE
-endif
 
 ifeq ($(FAST),1)
 	CFLAGS = -O3 -W -Wall $(EXTFLAGS)
@@ -28,7 +24,11 @@ else
 endif
 endif
 
-bsch: $(OBJECTS) bsch.o $(HEADERS)
+bsch: bschsfx $(IMAGE)
+	cat $^ > $@
+	chmod +x $@
+
+bsch.preboot: $(OBJECTS) bsch.o $(HEADERS)
 	$(CC) $(LDFLAGS) -o $@ $(OBJECTS) bsch.o
 
 bschsfx: $(OBJECTS) bschsfx.o $(HEADERS)
@@ -38,20 +38,25 @@ bschsfx: $(OBJECTS) bschsfx.o $(HEADERS)
 bschsfx.o: bsch.c
 	$(CC) -DSFX $(CFLAGS) -c -o $@ $^
 
-image: bsch
-	./bsch save-image.sch $(IMAGE)
+$(IMAGE): bsch.preboot
+	./bsch.preboot save-image.sch $(IMAGE)
+
+image: $(IMAGE)
 
 test: bsch
 	echo '(load "run-tests.sch")' | ./bsch
 
-check-syntax:
-	$(CC) -o $(CHK_SOURCES).nul -S $(CHK_SOURCES)
-
-TAGS:
+TAGS: bsch.c $(SOURCES) $(HEADERS)
 	find . -name "*.[chCH]" -print | etags -
 
+run: bsch
+	./bsch
+
 clean:
-	rm -f *.o $(TARGETS) *.nul $(IMAGE)
+	rm -f *.o $(TARGETS) $(IMAGE) bs
+
+bs: bsch bs-lib.sch
+	./bsch bs-build.sch
 
 INDENT_FLAGS = -npro -npsl -npcs -nsaf -nsai -nsaw -br -brf -brs -ncs
 indent:
@@ -59,3 +64,5 @@ indent:
 
 linecount:
 	wc -l *.[ch] *.sch clos/*.sch examples/*.sch tests/*.sch
+
+.PHONY: test image clean indent linecount run

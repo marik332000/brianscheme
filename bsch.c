@@ -222,13 +222,15 @@ int main(int argc, char ** argv) {
   if (print_help)
     print_usage (EXIT_SUCCESS);
 
-#ifdef SFX
-  /* Always load an image. */
-  off_t img_off = find_image();
-  image = "/proc/self/exe";
-#else
   off_t img_off = 0;
+#ifdef SFX
+  if (image == NULL && bootstrap) {
+    /* Always load an image. */
+    img_off = find_image();
+    image = "/proc/self/exe";
+  }
 #endif
+
   if (image) {
     int r = load_image(image, img_off);
     if (r != 0) {
@@ -245,15 +247,15 @@ int main(int argc, char ** argv) {
     vm_boot();
 
     /* need to patch up some things that move between boots */
-    patch_object(g->stdin_symbol, make_input_port(stdin));
-    patch_object(g->stdout_symbol, make_output_port(stdout));
-    patch_object(g->stderr_symbol, make_output_port(stderr));
+    patch_object(g->stdin_symbol, make_input_port(stdin, 0));
+    patch_object(g->stdout_symbol, make_output_port(stdout, 0));
+    patch_object(g->stderr_symbol, make_output_port(stderr, 0));
 
     /* Stick arguments and BS_PATH in global environment. */
     insert_strlist(bs_paths, "*load-path*", 0);
     insert_strlist(argv + optind, "*args*", 0);
 
-    /* Fire up a REPL. */
+    /* Fire up a REPL, or whatever the user had in mind. */
     apply(cdr(get_hashtab(g->vm_env, make_symbol("*image-start*"), NULL)),
 	  g->empty_list);
     exit(0);

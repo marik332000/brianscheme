@@ -154,7 +154,7 @@
    (define (gensym)
      (set! next-gensym (%fixnum-add next-gensym 1))
      (string->uninterned-symbol
-      (prim-concat "#" (number->string next-gensym)))))
+      (%prim-concat "#" (number->string next-gensym)))))
  0)
 
 ;; We used map in our definition of let0 so we had better go ahead and
@@ -544,67 +544,9 @@ body. always executes at least once"
   "execute body max times with idx going from 0 to max-1"
   `(do-times (lambda (,idx) . ,body) ,max))
 
-
-;; The exit-hook variable is looked up (in the current environment)
-;; and invoked if set whenever the (exit) primitive function is
-;; executed. The interpreter also invokes this hook when it's about to
-;; abort due to an error condition.
-;;
-;; We'll install a hook that prints a backtrace and dumps the user
-;; into a debug repl so that can try to figure out what went wrong
-;; before things go down for good.
-;;
-;; Whenever the hook returns the interpreter will make the exit system
-;; call for real and everything will disappear.
-(define (print-backtrace)
-  "print the backtrace from where we are. tail recursion hides some data"
-  (letrec ((iter (lambda (rest)
-		   (unless (null? rest)
-			   (display (car rest))
-			   (iter (cdr rest))))))
-
-    (let ((cs (car callstack)))
-      (iter (cdr (cdr cs))))))
-
-(define (debug-repl)
-  "repl that allows last-gasp debugging of a dying interpreter"
-  ;(display "debug-repl>")
-  (let ((result (eval (read-port stdin))))
-    (write-port result stdout)
-    (newline)
-    (unless (eq? result 'quit)
-	    (debug-repl))))
-
-(define (exit-hook)
-  "called as the last step of handling a hard interpreter exception"
-  ;; turn off debug so that we don't get a lot of extra noise between
-  ;; the real failure and the launch of the debug-repl.
-  (set-debug! #f)
-
-  ;; disable the exit-hook in case the thing that kicked us off was an
-  ;; exception during writing out something that's going to appear in
-  ;; the backtrace
-  ;(set! exit-hook nil)
-
-  ;; now dump an approximation of the backtrace (it's missing all
-  ;; tail-calls) and launch a debug repl.
-  ;(print-backtrace)
-  ;(display "evaluate 'quit to exit")
-  (debug-repl))
-
-;; We want to also provide a way to exit without invoking the exit
-;; hook. It seems natural to call this exit so we'll redefine the old
-;; one and replace it.
-(define throw-exit exit)
-
 (define (throw-error . objs)
   (apply error objs)
-  (throw-exit 1))
-
-(define (exit val)
-  "exit without activating the exit hook"
-  (set! exit-hook nil)
-  (throw-exit val))
+  (exit 1))
 
 (define (every-pair? pred lst)
   "true if binary-pred is true for every pair as it slides down the
@@ -655,12 +597,18 @@ list"
 	(f (car l))
 	(for-each f (cdr l)))))
 
+(define-syntax (car-else obj alternate)
+  "return (car obj) if it's not null"
+  `(if (null? ,obj)
+       ,alternate
+       (car ,obj)))
+
 (define (read port)
   "read from a port"
   (read-port port))
 
-(define (file-exists? name)
-  "Return #t if file exists, otherwise false."
+(define (file-exists?0 name)
+  "Return #t if file (and only files) exists, otherwise false."
   (let ((port (open-input-port name)))
     (if (eof-object? port)
         #f
@@ -668,15 +616,20 @@ list"
           (close-input-port port)
           #t))))
 
+(define (prim-concat str1 str2)
+  (if (and (string? str1) (string? str2))
+      (%prim-concat str1 str2)
+      (throw-error "expected strings" str1 str2)))
+
 (define (find-library name . paths)
   "Find the given library in the load path."
-  (if (file-exists? name)
+  (if (file-exists?0 name)
       name
       (let ((paths (car-else paths *load-path*)))
         (if (null? paths)
             #f
             (let ((file (prim-concat (car paths) (prim-concat "/" name))))
-              (if (file-exists? file)
+              (if (file-exists?0 file)
                   file
                   (find-library name (cdr paths))))))))
 
@@ -698,7 +651,7 @@ list"
 (let ((required nil))
   (letrec ((sym-to-name (lambda (name)
 			  (if (symbol? name)
-			      (prim-concat (symbol->string name) ".sch")
+			      (%prim-concat (symbol->string name) ".sch")
 			      name))))
     (define (require name)
       "load file name if it hasn't already been loaded"
@@ -711,12 +664,6 @@ list"
       "declare a given symbol as being satisfied"
       (push! (sym-to-name sym) required)
       sym)))
-
-(define (car-else obj alternate)
-  "return (car obj) if it's not null"
-  (if (null? obj)
-      alternate
-      (car obj)))
 
 (define (newline . port)
   "write a newline to port (defaults to stdout)"
@@ -782,7 +729,7 @@ not be quoted or escaped."
 
 (define (peek-char port)
   (let ((ch (read-char port)))
-    (unread-char port ch)
+    (%unread-char ch port)
     ch))
 
 (define (atom? obj)
@@ -844,7 +791,10 @@ not be quoted or escaped."
       (ass-set! (lambda (assf alist key value)
                   (let ((pair (assf key alist)))
                     (if pair
-                        (set-cdr! pair value))))))
+                        (begin
+			  (set-cdr! pair value)
+			  alist)
+			(cons (cons key value) alist))))))
 
   (define (assq key list)
     "Find the first pair in list thats car is eq? to key."
@@ -980,7 +930,11 @@ returns true"
 (define (global-ref sym)
   "returns the global value of sym. error if not defined"
   (let* ((sentinal (gensym))
-	 (result (hashtab-ref *global-environment* sym sentinal)))
+	 (result (if-compiling
+		  ;; the compiled environment is slightly different
+		  (cdr (hashtab-ref *global-environment* sym
+				    (cons nil sentinal)))
+		  (hashtab-ref *global-environment* sym sentinal))))
     (if (eq? result sentinal)
 	(throw-error "symbol" sym "is not defined globally")
 	result)))
@@ -988,7 +942,8 @@ returns true"
 (define (macro? sym)
   "is a given symbol defined as a global macro?"
   (and (bound? sym)
-       (syntax-procedure? (global-ref sym))))
+       (or (syntax-procedure? (global-ref sym))
+	   (compiled-syntax-procedure? (global-ref sym)))))
 
 (define (macroexpand0 form)
   "expand expression form by evaluating the macro at its head"
@@ -997,20 +952,27 @@ returns true"
 	(apply (global-ref fn) (cdr form))
 	form)))
 
-(define (macroexpand form)
-  "macroexpand the expression in form fully"
+(define (macroexpand x)
+  "fully expand all macros in form"
   (cond
-   ((not (pair? form)) form)
+   ((symbol? x) x)
+   ((atom? x) x)
    (else
-    (let ((expansion (macroexpand0 form)))
-      (if (equal? expansion form)
-	  (if (pair? (cdr expansion))
-	      ;; head is fully expanded. now expand the rest
-	      (cons (first expansion) (map macroexpand (rest expansion)))
-	      expansion)
-	  ;; head may be able to expand further
-	  (macroexpand expansion))))))
-
+    (case (first x)
+      (quote x)
+      (begin `(begin . ,(map macroexpand (cdr x))))
+      (set! `(set! ,(second x)
+		   ,(macroexpand (third x))))
+      (if `(if ,(macroexpand (second x))
+	       ,(macroexpand (third x))
+	       ,(macroexpand (fourth x))))
+      (lambda `(lambda ,(second x)
+		 . ,(map macroexpand (cddr x))))
+      (else
+       (if (comp-macro? (first x))
+	   (macroexpand (macroexpand0 x))
+	   `(,(macroexpand (first x)) .
+	     ,(map macroexpand (cdr x)))))))))
 
 (define-syntax (time . body)
   "display the time required to execute body"
@@ -1027,18 +989,18 @@ returns true"
        ,result)))
 
 (define (struct-constructor-name name)
-  (string->symbol (prim-concat "make-" (symbol->string name))))
+  (string->symbol (%prim-concat "make-" (symbol->string name))))
 
 (define (struct-predicate-name name)
-  (string->symbol (prim-concat (symbol->string name) "?")))
+  (string->symbol (%prim-concat (symbol->string name) "?")))
 
 (define (struct-slot-getter-name name slot)
-  (string->symbol (reduce prim-concat (list (symbol->string name)
+  (string->symbol (reduce %prim-concat (list (symbol->string name)
                                             "-" (symbol->string slot)
                                             "-ref"))))
 
 (define (struct-slot-setter-name name slot)
-  (string->symbol (reduce prim-concat (list (symbol->string name)
+  (string->symbol (reduce %prim-concat (list (symbol->string name)
                                             "-" (symbol->string slot)
                                             "-set!"))))
 

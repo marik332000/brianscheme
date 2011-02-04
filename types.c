@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 
 #include "types.h"
 #include "gc.h"
@@ -300,11 +301,13 @@ char is_compiled_proc(object * obj) {
   return obj->type == COMPILED_PROC;
 }
 
-object *make_input_port(FILE * stream) {
+object *make_input_port(FILE * stream, char is_pipe) {
   object *obj = alloc_object(0);
 
   obj->type = INPUT_PORT;
   obj->data.input_port.stream = stream;
+  obj->data.input_port.is_pipe = is_pipe;
+  obj->data.input_port.opened = 1;
   return obj;
 }
 
@@ -316,15 +319,53 @@ char is_output_port(object * obj) {
   return obj->type == OUTPUT_PORT;
 }
 
+char is_output_port_pipe(object * obj) {
+  return obj->data.output_port.is_pipe;
+}
+
+char is_input_port_pipe(object * obj) {
+  return obj->data.input_port.is_pipe;
+}
+
+char is_output_port_opened(object * obj) {
+  return obj->data.output_port.opened;
+}
+
+char is_input_port_opened(object * obj) {
+  return obj->data.input_port.opened;
+}
+
+void set_output_port_opened(object * obj, char opened) {
+  obj->data.output_port.opened = opened;
+}
+
+void set_input_port_opened(object * obj, char opened) {
+  obj->data.input_port.opened = opened;
+}
+
+char is_dir_stream(object * obj) {
+  return obj->type == DIR_STREAM;
+}
+
 char is_eof_object(object * obj) {
   return obj == g->eof_object;
 }
 
-object *make_output_port(FILE * stream) {
+object *make_output_port(FILE * stream, char is_pipe) {
   object *obj = alloc_object(0);
 
   obj->type = OUTPUT_PORT;
   obj->data.output_port.stream = stream;
+  obj->data.output_port.is_pipe = is_pipe;
+  obj->data.output_port.opened = 1;
+  return obj;
+}
+
+object *make_dir_stream(DIR * stream) {
+  object *obj = alloc_object(0);
+
+  obj->type = DIR_STREAM;
+  obj->data.dir.stream = stream;
   return obj;
 }
 
@@ -371,3 +412,28 @@ object *make_symbol(char *value) {
 char is_atom(object * obj) {
   return !is_pair(obj) || is_the_empty_list(obj);
 }
+
+object *make_primitive_exception(object *contents) {
+  return cons(g->error_sym, contents);
+}
+
+char is_primitive_exception(object *obj) {
+  return is_pair(obj) &&
+    CAR(obj) == g->error_sym;
+}
+
+object *throw_message(char *msg, ...) {
+  char buffer[1024];
+  va_list args;
+  va_start(args, msg);
+  vsnprintf(buffer, 1024, msg, args);
+  va_end(args);
+
+  object *msg_obj = make_string(buffer);
+  push_root(&msg_obj);
+  object *ex = make_primitive_exception(msg_obj);
+  pop_root(&msg_obj);
+
+  return ex;
+}
+

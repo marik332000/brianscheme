@@ -16,8 +16,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
-#include <stdarg.h>
 #include <time.h>
 #include <math.h>
 #include <sys/stat.h>
@@ -30,40 +30,6 @@
 #include "ffi.h"
 
 static const int DEBUG_LEVEL = 1;
-
-void eval_exit_hook() {
-  /* try to find an exit hook in the vm environment first */
-  object *exit_hook =
-    get_hashtab(g->vm_env, g->exit_hook_symbol, NULL);
-
-  if(exit_hook == NULL) {
-    /* this happens if the interpreter has been destroyed but there
-       isn't an exit hook in the g->vm_env */
-    if(is_the_empty_list(g->env)) { return; }
-
-    exit_hook =
-      get_hashtab(g->env, g->exit_hook_symbol, g->empty_list);
-  } else {
-    exit_hook = cdr(exit_hook);
-  }
-
-  if(exit_hook != g->empty_list) {
-    object *exp = cons(exit_hook, g->empty_list);
-    push_root(&exp);
-    interp(exp, g->empty_env);
-    pop_root(&exp);
-  }
-}
-
-void throw_interp(char *msg, ...) {
-  va_list args;
-  va_start(args, msg);
-  vfprintf(stderr, msg, args);
-  va_end(args);
-
-  eval_exit_hook();
-  exit(1);
-}
 
 /* dealing with environments */
 object *enclosing_environment(object * env) {
@@ -105,8 +71,7 @@ object *extend_environment(object * vars, object * vals, object * base_env) {
 object *lookup_global_value(object * var, object * env) {
   object *res = get_hashtab(env, var, NULL);
   if(res == NULL) {
-    throw_interp("lookup failed. variable %s is unbound\n", STRING(var));
-    return NULL;
+    return throw_message("lookup failed. variable %s is unbound", STRING(var));
   }
 
   return res;
@@ -408,14 +373,14 @@ DEFUN1(cons_proc) {
 DEFUN1(car_proc) {
   object *first = FIRST;
   if(!is_pair(first) && !is_the_empty_list(first))
-    throw_interp("car expects list\n");
+    return throw_message("car expects list");
   return car(first);
 }
 
 DEFUN1(cdr_proc) {
   object *first = FIRST;
   if(!is_pair(first) && !is_the_empty_list(first))
-    throw_interp("cdr expects list\n");
+    return throw_message("cdr expects list");
   return cdr(FIRST);
 }
 
@@ -477,12 +442,19 @@ DEFUN1(open_output_port_proc) {
   if(out == NULL) {
     return g->eof_object;
   }
-  return make_output_port(out);
+  return make_output_port(out, 0);
 }
 
 DEFUN1(close_output_port_proc) {
-  FILE *out = OUTPUT(FIRST);
-  fclose(out);
+  object *obj = FIRST;
+  if (!is_output_port_opened(obj))
+    return g->false;
+  FILE *out = OUTPUT(obj);
+  if (is_output_port_pipe(obj))
+    pclose(out);
+  else
+    fclose(out);
+  set_output_port_opened(obj, 0);
   return g->true;
 }
 
@@ -492,13 +464,38 @@ DEFUN1(open_input_port_proc) {
   if(in == NULL) {
     return g->eof_object;
   }
-  return make_input_port(in);
+  return make_input_port(in, 0);
 }
 
 DEFUN1(close_input_port_proc) {
-  FILE *in = INPUT(FIRST);
-  fclose(in);
+  object *obj = FIRST;
+  if (!is_input_port_opened(obj))
+    return g->false;
+  FILE *in = INPUT(obj);
+  if (is_input_port_pipe(obj))
+    pclose(in);
+  else
+    fclose(in);
+  set_input_port_opened(obj, 0);
   return g->true;
+}
+
+DEFUN1(open_input_pipe_proc) {
+  object *name = FIRST;
+  FILE *in = popen(STRING(name), "r");
+  if(in == NULL) {
+    return g->eof_object;
+  }
+  return make_input_port(in, 1);
+}
+
+DEFUN1(open_output_pipe_proc) {
+  object *name = FIRST;
+  FILE *in = popen(STRING(name), "w");
+  if(in == NULL) {
+    return g->eof_object;
+  }
+  return make_output_port(in, 1);
 }
 
 DEFUN1(chmod_proc) {
@@ -508,11 +505,57 @@ DEFUN1(chmod_proc) {
   return g->false;
 }
 
+DEFUN1(umask_proc) {
+  return make_fixnum(umask(LONG(FIRST)));
+}
+
+DEFUN1(mkdir_proc) {
+  int r = mkdir(STRING(FIRST), LONG(SECOND));
+  if (r == 0)
+    return g->true;
+  return g->false;
+
+}
+
+/* getumask has a thread-safety issue. */
+DEFUN1(getumask_proc) {
+  mode_t mode = umask(0);
+  umask(mode);
+  return make_fixnum(mode);
+}
+
 DEFUN1(rename_proc) {
   int r = rename(STRING(FIRST), STRING(SECOND));
   if (r == 0)
     return g->true;
   return g->false;
+}
+
+DEFUN1(opendir_proc) {
+  DIR *in = opendir(STRING(FIRST));
+  if(in == NULL) {
+    return g->eof_object;
+  }
+  return make_dir_stream(in);
+}
+
+/* This function has thread-safety issues. */
+DEFUN1(readdir_proc) {
+  DIR *in = DIR_STREAM(FIRST);
+  struct dirent *r = readdir(in);
+  if(r == NULL) {
+    return g->eof_object;
+  }
+  return make_string(r->d_name);
+}
+
+DEFUN1(closedir_proc) {
+  closedir(DIR_STREAM(FIRST));
+  return g->true;
+}
+
+DEFUN1(is_dir_stream_proc) {
+  return AS_BOOL(is_dir_stream(FIRST));
 }
 
 DEFUN1(gc_proc) {
@@ -524,13 +567,24 @@ DEFUN1(eval_proc) {
   return interp(exp, g->empty_env);
 }
 
+DEFUN1(system_proc) {
+  return AS_BOOL(system(STRING(FIRST)) == 0);
+}
+
+DEFUN1(getenv_proc) {
+  char *val = getenv(STRING(FIRST));
+  if (val == NULL)
+    return g->false;
+  return make_string(val);
+}
+
 DEFUN1(save_image_proc) {
   baker_collect();
 
   object *file = FIRST;
   int r = save_image(STRING(file));
   if (r < 0)
-    throw_interp("could not save image");
+    return throw_message("could not save image");
   return g->true;
 }
 
@@ -583,8 +637,7 @@ object *apply(object *fn, object *evald_args) {
   }
 
   owrite(stderr, fn);
-  throw_interp("\ncannot apply non-function\n");
-  return g->false;
+  return throw_message("cannot apply non-function");
 }
 
 DEFUN1(apply_proc) {
@@ -621,10 +674,26 @@ DEFUN1(read_char_proc) {
 }
 
 DEFUN1(unread_char_proc) {
-  object *port = FIRST;
-  object *ch = SECOND;
+  object *ch = FIRST;
+  object *port = SECOND;
 
   ungetc(CHAR(ch), INPUT(port));
+  return g->true;
+}
+
+DEFUN1(flush_output_proc) {
+  return AS_BOOL(fflush(OUTPUT(FIRST)) == 0);
+}
+
+DEFUN1(port_dump_proc) {
+  FILE *in = INPUT(FIRST);
+  FILE *out = OUTPUT(SECOND);
+  char buffer[4096];
+  size_t r;
+  do {
+    r = fread(buffer, 1, 4096, in);
+    fwrite(buffer, 1, r, out);
+  } while (r > 0);
   return g->true;
 }
 
@@ -674,7 +743,7 @@ DEFUN1(number_to_string_proc) {
     snprintf(buffer, 100, "%.15lg", DOUBLE(FIRST));
   }
   else {
-    throw_interp("obj is not a number");
+    return throw_message("obj is not a number");
   }
   return make_string(buffer);
 }
@@ -756,7 +825,6 @@ DEFUN1(vector_length_proc) {
 }
 
 DEFUN1(exit_proc) {
-  eval_exit_hook();
   exit((int)LONG(FIRST));
   return g->false;
 }
@@ -781,6 +849,10 @@ DEFUN1(stats_proc) {
 
 DEFUN1(clock_proc) {
   return make_fixnum(clock());
+}
+
+DEFUN1(getpid_proc) {
+  return make_fixnum(getpid());
 }
 
 DEFUN1(clocks_per_sec_proc) {
@@ -824,38 +896,41 @@ DEFUN1(get_meta_obj_proc) {
   return METAPROC(FIRST);
 }
 
-void write_pair(FILE * out, object * pair) {
+object *write_pair(FILE * out, object * pair) {
   object *car_obj = car(pair);
   object *cdr_obj = cdr(pair);
 
-  owrite(out, car_obj);
+  object * result = owrite(out, car_obj);
+  if(is_primitive_exception(result)) {
+    return result;
+  }
+
   if(is_pair(cdr_obj)) {
     fprintf(out, " ");
-    write_pair(out, cdr_obj);
+    return write_pair(out, cdr_obj);
   }
   else if(is_the_empty_list(cdr_obj)) {
-    return;
+    return g->true;
   }
   else {
     fprintf(out, " . ");
-    owrite(out, cdr_obj);
+    return owrite(out, cdr_obj);
   }
 }
 
-void owrite(FILE * out, object * obj) {
+object *owrite(FILE * out, object * obj) {
   long ii;
   char c;
   char *str;
   object *head;
 
   if(obj == NULL) {
-    fprintf(out, "#<NULL>");
-    return;
+    return throw_message("object is primitive #<NULL>");
   }
 
   if(is_hashtab(obj) && obj == g->env) {
     fprintf(out, "#<global-environment-hashtab>");
-    return;
+    return g->true;
   }
 
   switch (obj->type) {
@@ -883,6 +958,9 @@ void owrite(FILE * out, object * obj) {
       break;
     case ' ':
       fprintf(out, "space");
+      break;
+    case '\t':
+      fprintf(out, "tab");
       break;
     default:
       putc(c, out);
@@ -916,36 +994,74 @@ void owrite(FILE * out, object * obj) {
       if(ii > 0) {
 	putc(' ', out);
       }
-      owrite(out, VARRAY(obj)[ii]);
+      object * result = owrite(out, VARRAY(obj)[ii]);
+      if(is_primitive_exception(result)) {
+	return result;
+      }
     }
     putc(')', out);
     break;
   case PAIR:
     head = car(obj);
-    /* only the reader produces these and the reader always
-     * makes them like (thing affected-thing) therefore it
-     * should be safe to assume that if obj's head is one of
-     * these things then that obj has a cadr
+    /*
+     * It's not actually safe to cadr these objects because the user
+     * could have typed in something like (quote) which would cause us
+     * to car on nil
      */
     if(head == g->quote_symbol) {
+      if(is_the_empty_list(cdr(obj))) {
+	fprintf(out, "(quote)");
+	return g->true;
+      }
+
       fprintf(out, "'");
-      owrite(out, cadr(obj));
+      object *result = owrite(out, cadr(obj));
+      if(is_primitive_exception(result)) {
+	return result;
+      }
     }
     else if(head == g->unquote_symbol) {
+      if(is_the_empty_list(cdr(obj))) {
+	fprintf(out, "(unquote)");
+	return g->true;
+      }
+
       fprintf(out, ",");
-      owrite(out, cadr(obj));
+      object *result = owrite(out, cadr(obj));
+      if(is_primitive_exception(result)) {
+	return result;
+      }
     }
     else if(head == g->unquotesplicing_symbol) {
+      if(is_the_empty_list(cdr(obj))) {
+	fprintf(out, "(unquote-splicing)");
+	return g->true;
+      }
+
       fprintf(out, ",@");
-      owrite(out, cadr(obj));
+      object *result = owrite(out, cadr(obj));
+      if(is_primitive_exception(result)) {
+	return result;
+      }
     }
     else if(head == g->quasiquote_symbol) {
+      if(is_the_empty_list(cdr(obj))) {
+	fprintf(out, "(quasiquote)");
+	return g->true;
+      }
+
       fprintf(out, "`");
-      owrite(out, cadr(obj));
+      object *result = owrite(out, cadr(obj));
+      if(is_primitive_exception(result)) {
+	return result;
+      }
     }
     else {
       fprintf(out, "(");
-      write_pair(out, obj);
+      object *result = write_pair(out, obj);
+      if(is_primitive_exception(result)) {
+	return result;
+      }
       fprintf(out, ")");
     }
     break;
@@ -965,10 +1081,15 @@ void owrite(FILE * out, object * obj) {
     fprintf(out, "#<syntax-procedure>");
     break;
   case META_PROC:
+  {
     fprintf(out, "#<meta: ");
-    owrite(out, METAPROC(obj));
+    object *result = owrite(out, METAPROC(obj));
+    if(is_primitive_exception(result)) {
+      return result;
+    }
     fprintf(out, ">");
     break;
+  }
   case HASH_TABLE:
     fprintf(out, "#<hash-table>");
     break;
@@ -982,40 +1103,19 @@ void owrite(FILE * out, object * obj) {
     fprintf(out, "#<eof>");
     break;
   case ALIEN:
-    fprintf(out, "#<alien-object %llX>", (unsigned long long)ALIEN_PTR(obj));
+    fprintf(out, "#<alien-object %p>", ALIEN_PTR(obj));
     break;
   default:
-    throw_interp("cannot write unknown type: %d\n", obj->type);
+    return throw_message("cannot write unknown type: %d\n", obj->type);
   }
-}
-
-object *debug_write(char *msg, object * obj, int level) {
-  if(g->debug_enabled) {
-    int ii;
-    for(ii = 0; ii < level; ++ii) {
-      fprintf(stderr, " ");
-    }
-
-    fprintf(stderr, "%s: ", msg);
-    owrite(stderr, obj);
-    fprintf(stderr, "\n");
-  }
-  return obj;
+  return g->true;
 }
 
 char is_falselike(object * obj) {
   return obj == g->false || is_the_empty_list(obj);
 }
 
-#ifdef NODEBUG
 #define DN(msg, obj, level, n) obj
-#else
-#define DN(msg, obj, level, n)			\
-  (DEBUG_LEVEL >= n ? debug_write(msg, obj, level) : obj);
-#endif
-
-#define D1(msg, obj, level) DN(msg, obj, level, 1);
-#define D2(msg, obj, level) DN(msg, obj, level, 2);
 
 object *interp(object * exp, object * env) {
   push_root(&exp);
@@ -1055,7 +1155,6 @@ object *expand_macro(object * macro, object * args, object * env, int level,
 #define INTERP_RETURN(result)			\
   do {						\
     object *temp = result;			\
-    D1("result", temp, level);			\
     if(env_protected) {				\
       pop_root(&env);				\
     }						\
@@ -1072,7 +1171,6 @@ object *interp1(object * exp, object * env, int level,
   char env_protected = 0;
 
 interp_restart:
-  D1("interpreting", exp, level);
 
   if(is_symbol(exp)) {
     INTERP_RETURN(lookup_variable_value(exp, env));
@@ -1088,8 +1186,7 @@ interp_restart:
     else if(head == g->begin_symbol) {
       exp = cdr(exp);
       if(is_the_empty_list(exp)) {
-	throw_interp("begin must be followed by exp");
-	INTERP_RETURN(NULL);
+	INTERP_RETURN(throw_message("begin must be followed by exp"));
       }
 
       while(!is_the_empty_list(cdr(exp))) {
@@ -1252,15 +1349,13 @@ interp_restart:
 	pop_root(&fn);
 
 	owrite(stderr, fn);
-	throw_interp("\ncannot apply non-function\n");
-	INTERP_RETURN(NULL);
+	INTERP_RETURN(throw_message("\ncannot apply non-function\n"));
       }
     }
   }
 
   owrite(stderr, exp);
-  throw_interp(": can't evaluate\n");
-  INTERP_RETURN(NULL);
+  INTERP_RETURN(throw_message(": can't evaluate\n"));
 }
 
 
@@ -1357,18 +1452,32 @@ void init_prim_environment(definer defn) {
   add_procedure("open-input-port", open_input_port_proc);
   add_procedure("close-output-port", close_output_port_proc);
   add_procedure("close-input-port", close_input_port_proc);
+  add_procedure("%open-output-pipe", open_output_pipe_proc);
+  add_procedure("%open-input-pipe", open_input_pipe_proc);
   add_procedure("%chmod", chmod_proc);
+  add_procedure("%umask", umask_proc);
+  add_procedure("getumask", getumask_proc);
+  add_procedure("%mkdir", mkdir_proc);
   add_procedure("%rename-file", rename_proc);
+
+  add_procedure("directory-stream?", is_dir_stream_proc);
+  add_procedure("%opendir", opendir_proc);
+  add_procedure("%readdir", readdir_proc);
+  add_procedure("%closedir", closedir_proc);
 
   add_procedure("write-port", write_proc);
   add_procedure("read-port", read_proc);
   add_procedure("read-char", read_char_proc);
   add_procedure("write-char", write_char_proc);
-  add_procedure("unread-char", unread_char_proc);
+  add_procedure("%unread-char", unread_char_proc);
+  add_procedure("%flush-output", flush_output_proc);
+  add_procedure("%port-dump", port_dump_proc);
 
   add_procedure("eval", eval_proc);
   add_procedure("apply", apply_proc);
   add_procedure("gc", gc_proc);
+  add_procedure("%system", system_proc);
+  add_procedure("%getenv", getenv_proc);
   add_procedure("%save-image", save_image_proc);
 
   add_procedure("char->integer", char_to_integer_proc);
@@ -1383,11 +1492,12 @@ void init_prim_environment(definer defn) {
   add_procedure("string->uninterned-symbol",
 		string_to_uninterned_symbol_proc);
 
-  add_procedure("prim-concat", concat_proc);
+  add_procedure("%prim-concat", concat_proc);
 
   add_procedure("exit", exit_proc);
   add_procedure("interpreter-stats", stats_proc);
   add_procedure("clock", clock_proc);
+  add_procedure("getpid", getpid_proc);
   add_procedure("clocks-per-sec", clocks_per_sec_proc);
   add_procedure("set-debug!", debug_proc);
   add_procedure("compound-body", compound_body_proc);
@@ -1398,9 +1508,9 @@ void init_prim_environment(definer defn) {
   add_procedure("compiled-bytecode", compiled_bytecode_proc);
   add_procedure("compiled-environment", compiled_environment_proc);
 
-  defn(SYMBOL(g->stdin_symbol), make_input_port(stdin));
-  defn(SYMBOL(g->stdout_symbol), make_output_port(stdout));
-  defn(SYMBOL(g->stderr_symbol), make_output_port(stderr));
+  defn(SYMBOL(g->stdin_symbol), make_input_port(stdin, 0));
+  defn(SYMBOL(g->stdout_symbol), make_output_port(stdout, 0));
+  defn(SYMBOL(g->stderr_symbol), make_output_port(stderr, 0));
   defn(SYMBOL(g->exit_hook_symbol), g->empty_list);
 }
 
@@ -1412,6 +1522,7 @@ void interp_add_roots(void) {
   push_root(&(g->eof_object));
   push_root(&(g->env));
   push_root(&(g->vm_env));
+  push_root(&(g->error_sym));
 }
 
 void init() {
@@ -1456,6 +1567,8 @@ void init() {
   g->stdout_symbol = make_symbol("stdout");
   g->stderr_symbol = make_symbol("stderr");
   g->exit_hook_symbol = make_symbol("exit-hook");
+  g->error_sym = make_uninterned_symbol("error");
+  push_root(&(g->error_sym));
 
   g->eof_object = alloc_object(0);
   g->eof_object->type = EOF_OBJECT;

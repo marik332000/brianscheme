@@ -183,8 +183,9 @@
 (define-method (print-object (strm <output-stream>)
 			     (char <char>))
   (cond
-   ((eq? char #\space) (write-stream strm "#\space"))
-   ((eq? char #\newline) (write-stream strm "#\newline"))
+   ((eq? char #\space) (write-stream strm "#\\space"))
+   ((eq? char #\newline) (write-stream strm "#\\newline"))
+   ((eq? char #\tab) (write-stream strm "#\\tab"))
    (else (write-stream strm "#\\")
 	 (write-stream strm char))))
 
@@ -211,6 +212,10 @@
 (define-method (print-object (strm <output-stream>)
 			     (prim <output-port>))
   (write-stream strm "#<output-port>"))
+
+(define-method (print-object (strm <output-stream>)
+			     (prim <directory-stream>))
+  (write-stream strm "#<directory-stream>"))
 
 (define-method (print-object (strm <output-stream>)
 			     (prim <alien>))

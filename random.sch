@@ -4,7 +4,6 @@
 ; 32-bit and 64-bit machines.
 
 (require 'clos)
-(require 'ffi)
 
 (define *mask-16* (- (expt 2 16) 1))
 (define *mask-31* (- (expt 2 31) 1))
@@ -121,7 +120,11 @@
   (let ((rng (car-else state *random-state*)))
     (copy rng)))
 
-(define *random-state* (make-random-state (make-seed)))
+(define (init-*random-state*)
+  "Initialize *random-state*."
+  (define *random-state* (make-random-state (make-seed))))
+(init-*random-state*)
+(push! init-*random-state* *load-hooks*)
 
 (define (random n . state)
   "Generate a random number between 0 and n."

@@ -3,7 +3,7 @@
   (apply printf args))
 
 (define (lift exp)
-  (lift:exp (comp-macroexpand exp) nil))
+  (lift:exp (macroexpand exp) nil))
 
 (define (lift:exp exp env)
   (dprintf "lift:exp %a -- %a\n" exp env)

@@ -9,23 +9,37 @@
 		    stdout-stream)))
     (print-object stream obj)))
 
+;; define a VM exception handler that uses our higher level condition
+;; system
+(set-error-restart!
+ (lambda (ex)
+   (raise (list 'vm-error ex))))
+
 (define (clos-repl)
-    (let* ((exp (read-port stdin))
-	   (res (with-exception-handler
-		 (lambda (ex)
-		   (write-stream stderr-stream "clos-repl: ")
-		   (print-object stderr-stream ex)
-		   (newline)
-		   'error)
+  (letrec ((repl-loop
+	    (lambda ()
+	      (display "bs> ")
+	      (let* ((exp (read-port stdin))
+		     (res (eval exp)))
 
-		 (lambda () (eval exp)))))
+		(when (eof-object? res)
+		      (newline)
+		      (exit 0))
 
-      (when (eof-object? res)
-	    (newline)
-	    (exit 0))
+		(print-object stdout-stream res)
+		(newline)
+		(repl-loop)))))
 
-      (print-object stdout-stream res)
-      (newline)
-      (clos-repl)))
+    (with-exception-handler
+     (lambda (ex)
+       (write-stream stderr-stream "clos-repl: ")
+       (print-object stderr-stream ex)
+       (newline)
+       (repl-loop))
 
-(define exit-hook clos-repl)
+     (lambda () (repl-loop)))))
+
+
+
+
+

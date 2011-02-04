@@ -164,24 +164,28 @@ freed later."
       call-result)))
 
 (define-syntax (with-library handle-and-name . body)
-  "load a dynamic library while body is in scope"
-  `(let ((,(first handle-and-name)
-	  (ffi:dlopen ,(second handle-and-name))))
-     (let ((result (begin . ,body)))
-       (ffi:dlclose ,(first handle-and-name))
-       result)))
+  "provide a handle to a dynamic library while body is in scope. The
+body will be re-executed with a new handle whenever the image is
+reloaded."
+  `(let ((loader
+	  (lambda ()
+	    (let ((,(first handle-and-name)
+		   (ffi:dlopen ,(second handle-and-name))))
+	      (let ((result (begin . ,body)))
+		result)))))
+
+     (push! loader *load-hooks*)
+     (loader)))
 
 ;; simple example of using ffi to resolve symbols
 ;; already loaded by ld
 (with-library (handle nil)
   (let ((lputs (ffi:dlsym handle "puts"))
 	(lfork (ffi:dlsym handle "fork"))
-	(lgetenv (ffi:dlsym handle "getenv"))
 	(lsleep (ffi:dlsym handle "sleep"))
 	(lusleep (ffi:dlsym handle "usleep"))
 	(lputchar (ffi:dlsym handle "putchar"))
 	(lwait (ffi:dlsym handle "wait"))
-	(lgetpid (ffi:dlsym handle "getpid"))
 	(ltime (ffi:dlsym handle "time"))
 	(ltest-fn (ffi:dlsym handle "test_fn")))
 
@@ -189,14 +193,6 @@ freed later."
 
     (define (test-fn closure)
       (ffi:funcall ltest-fn 'ffi-void closure))
-
-    (define (getenv var)
-      (let ((result
-	     (ffi:funcall lgetenv 'ffi-pointer
-			  (ffi:string-to-alien var))))
-	(if (= (ffi:alien-to-int result) 0)
-	    #f
-	    (ffi:alien-to-string result))))
 
     (define (fork)
       (ffi:funcall lfork 'ffi-uint))
@@ -206,9 +202,6 @@ freed later."
 
     (define (usleep useconds)
       (ffi:funcall lusleep 'ffi-uint useconds))
-
-    (define (getpid)
-      (ffi:funcall lgetpid 'ffi-uint))
 
     ;; this definition is a bit trickier because we're
     ;; dealing with a pointer to a primitive
