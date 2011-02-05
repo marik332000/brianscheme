@@ -1,4 +1,11 @@
 
+(define-struct lmbda
+  "structure representing a processed lambda"
+  (name
+   env
+   body
+   args))
+
 (define (lift exp)
   (lift:exp (macroexpand exp) nil))
 
@@ -50,9 +57,10 @@
 
 (define (lift:lambda args body env)
   (printf "lift:lambda %a, %a\n" args body)
-  `(lambda ,args
-     . ,(lift:begin body
-		    (cons (make-true-list args)
-			  env))))
+  (make-lmbda 'name (gensym) 'env env
+	      'body (lift:begin
+		     body
+		     (cons (make-true-list args) env))
+	      'args args))
 
 
