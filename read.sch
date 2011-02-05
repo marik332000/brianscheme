@@ -130,6 +130,24 @@
       (begin (read:slurp-atom port) #\tab))
      (#t ch))))
 
+(define-dispatch-macro-character (#\# #\B port)
+  (string->integer (read:slurp-atom port) 'base 2))
+(set-dispatch-macro-character! #\# #\b (get-dispatch-macro-character #\# #\B))
+
+(define-dispatch-macro-character (#\# #\O port)
+  (string->integer (read:slurp-atom port) 'base 8))
+(set-dispatch-macro-character! #\# #\o (get-dispatch-macro-character #\# #\O))
+
+(define-dispatch-macro-character (#\# #\X port)
+  (string->integer (read:slurp-atom port) 'base 16))
+(set-dispatch-macro-character! #\# #\x (get-dispatch-macro-character #\# #\X))
+
+(define-dispatch-macro-character (#\# #\: port)
+  (string->uninterned-symbol (read:slurp-atom port)))
+
+(define-dispatch-macro-character (#\# #\. port)
+  (eval (read port 'eof-error #t)))
+
 (define-dispatch-macro-character (#\# #\< port)
   "Produce an error."
   (throw-error "unreadable object" "#<...>"))
@@ -239,9 +257,9 @@
   "Turn the token in the string into either an integer, real, or symbol."
   (let ((lst (string->list str)))
     (cond
-     ((integer-string-list? lst) (string->integer str))
-     ((real-string-list? lst)    (string->real str))
-     (#t                         (string->symbol str)))))
+     ((integer-string-list? lst *digits*) (string-list->integer lst 10))
+     ((real-string-list? lst)             (string-list->real lst))
+     (#t                                  (string->symbol str)))))
 
 ;; Take over for old reader
 (define old-read read-port)
