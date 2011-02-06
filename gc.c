@@ -46,15 +46,6 @@ void FREE(void *p) {
   pool_free(g->global_pool, p);
 }
 
-void *xmalloc(size_t size) {
-  void *obj = malloc(size);
-  if(obj == NULL) {
-    fprintf(stderr, "out of memory\n");
-    exit(1);
-  }
-  return obj;
-}
-
 int save_image(char *filename) {
   return pool_dump(g->global_pool, filename);
 }

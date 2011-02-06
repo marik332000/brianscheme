@@ -30,7 +30,6 @@ void pop_root(object **stack);
 object *alloc_object(char needs_finalization);
 long get_alloc_count();
 
-void *xmalloc(size_t size); /* exit() on failure */
 void *MALLOC(size_t size);  /* mmap()ed */
 void *REALLOC(void *p, size_t new);  /* mmap()ed */
 void FREE(void *p);       /* mmap()ed */

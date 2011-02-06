@@ -880,10 +880,10 @@ DEFUN1(concat_proc) {
   char *str2 = STRING(SECOND);
   size_t len1 = strlen(str1);
   size_t len2 = strlen(str2);
-  char *buffer = xmalloc(len1 + len2 + 1);
+  char *buffer = MALLOC(len1 + len2 + 1);
   snprintf(buffer, len1 + len2 + 1, "%s%s", str1, str2);
   object *str = make_string(buffer);
-  free(buffer);
+  FREE(buffer);
   return str;
 }
 
