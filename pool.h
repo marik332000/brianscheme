@@ -44,6 +44,7 @@ typedef struct pool_t
   size_t min_alloc;		/* min allocation size */
   subpool_t *pools;		/* first element in linked list */
   subpool_t *first;		/* first good subpool in list */
+  void *next_address;		/* address for the next subpool */
 } pool_t;
 
 /* Create a pool with a given minimal allocation size. Given a

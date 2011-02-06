@@ -25,6 +25,8 @@
 #include "pool.h"
 #include "gc.h"
 
+#define FIRST_POOL ((void *) 0x02000000)
+
 static const size_t hdr = sizeof(void *) + sizeof(size_t);
 
 size_t default_pool_size = 1048576;
@@ -32,8 +34,8 @@ int miss_limit = 8;
 int pool_scale = 2;
 size_t init_freed_stack = 256;
 
-void* new_mmap(size_t size) {
-  void *p = mmap(NULL, size, PROT_READ | PROT_WRITE,
+void* new_mmap(size_t size, void *address) {
+  void *p = mmap(address, size, PROT_READ | PROT_WRITE,
 		 MAP_PRIVATE | MAP_ANON, -1, 0);
   if (p == MAP_FAILED) {
     fprintf(stderr, "error: mmap() failed to create mempool: %s\n",
@@ -44,7 +46,7 @@ void* new_mmap(size_t size) {
 }
 
 /* Used internally to allocate more pool space. */
-static subpool_t *create_subpool_node (size_t size);
+static subpool_t *create_subpool_node (size_t size, void *address);
 
 pool_t *create_pool (size_t min_alloc, size_t init_alloc, void **init)
 {
@@ -53,12 +55,13 @@ pool_t *create_pool (size_t min_alloc, size_t init_alloc, void **init)
   size_t init_size = (default_pool_size / ps) * ps;
 
   /* allocate first subpool and use it for the pool */
-  subpool_t *first = create_subpool_node (init_size);
+  subpool_t *first = create_subpool_node (init_size, FIRST_POOL);
   pool_t *new_pool = first->free_start;
   first->free_start += sizeof (pool_t);
   new_pool->pools = first;
   new_pool->first = new_pool->pools;
   new_pool->min_alloc = min_alloc;
+  new_pool->next_address = FIRST_POOL + init_size;
 
   if (init_alloc > 0 && init != NULL)
     *init = pool_alloc(new_pool, init_alloc);
@@ -132,7 +135,8 @@ void *pool_alloc (pool_t * source_pool, size_t size)
 	}
 
       /* create new subpool */
-      last->next = create_subpool_node (new_size);
+      last->next = create_subpool_node (new_size, source_pool->next_address);
+      source_pool->next_address += new_size;
       cur = last->next;
 
       if (cur == NULL)		/* failed to allocate subpool */
@@ -198,10 +202,10 @@ void pool_free (pool_t * source_pool, void *p)
   cur->freedp++;
 }
 
-subpool_t *create_subpool_node (size_t size)
+subpool_t *create_subpool_node (size_t size, void *address)
 {
   /* allocate subpool memory */
-  void *block = new_mmap (size);
+  void *block = new_mmap (size, address);
   subpool_t *new_subpool = block + hdr;
   new_subpool->mem_block = block;
 
