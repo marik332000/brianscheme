@@ -710,11 +710,6 @@ not be quoted or escaped."
   (write-with-spaces stderr objs)
   (newline))
 
-(define (peek-char port)
-  (let ((ch (read-char port)))
-    (%unread-char ch port)
-    ch))
-
 (define (atom? obj)
   (not (pair? obj)))
 

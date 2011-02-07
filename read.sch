@@ -1,6 +1,63 @@
 ;;; read.sch --- a flexible BS reader
 
-;; This reader takes over for the C reader, being much more flexible.
+;; DESCRIPTION: This new reader takes over for the C reader, being
+;; much more flexible.
+
+;; Turn read-char and unread-char into generic functions. These are
+;; the only two I/O functions needed by the new reader.
+
+(define prim-read-char read-char)
+(define prim-unread-char unread-char)
+
+(define-generic read-char
+  "Read a single character from the port.")
+
+(define-generic unread-char
+  "Put a single character back into the buffer.")
+
+(define-method (read-char (port <input-port>))
+  (prim-read-char port))
+
+(define-method (unread-char (char <char>)
+ 			    (port <input-port>))
+  (prim-unread-char char port))
+
+(define (peek-char port)
+  "Look at the next character without removing it from the stream."
+  (let ((ch (read-char port)))
+    (unread-char ch port)
+    ch))
+
+;; Define a string-input-port for reading from strings.
+
+(define-class <string-input-port> (<input-port>)
+  "Read from a string like it was a port."
+  ('string 'len 'pos))
+
+(define-method (initialize (str <string-input-port>) args)
+  (if (null? args)
+      (error "no string given for <string-input-port>" args))
+  (slot-set! str 'string (car args))
+  (slot-set! str 'len (string-length (car args)))
+  (slot-set! str 'pos 0))
+
+(define-method (read-char (str <string-input-port>))
+  (let ((len (slot-ref str 'len))
+	(pos (slot-ref str 'pos)))
+    (if (= pos len)
+	*eof-object*
+	(begin
+	  (slot-set! str 'pos (+ 1 pos))
+	  (string-ref (slot-ref str 'string) pos)))))
+
+(define-method (unread-char (char <char>)
+			    (str <string-input-port>))
+  (unless (zero? (slot-ref str 'pos))
+	  (slot-set! str 'pos (- (slot-ref str 'pos) 1))))
+
+(define (read-from-string str)
+  "Return object read from string."
+  (read:read (make <string-input-port> str)))
 
 ;; General functions
 
