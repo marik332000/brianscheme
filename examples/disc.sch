@@ -1,23 +1,23 @@
 (require 'ncurses)
 
 (define *disc-win* (nc:initscr))
-
-(define *map* (make <map> (nc:getmaxx *disc-win*) (nc:getmaxy *disc-win*)))
+(define *width* (nc:getmaxx *disc-win*))
+(define *height* (nc:getmaxy *disc-win*))
 
 (define-class <map> ()
   "Game world map."
-  ('width 'height 'grid 'creatures))
+  (:width :height :grid :creatures))
 
 (define-method (initialize (m <map>) args)
   "Create a new empty map."
-  (slot-set! m 'width (or (first args) 10))
-  (slot-set! m 'height (or (second args) 10))
+  (slot-set! m :width (or (first args) 10))
+  (slot-set! m :height (or (second args) 10))
   (let ((grid (make-vector (height m) #f)))
     (dotimes (y (height m))
       (vector-set! grid y (make-vector (width m) #f)))
-    (slot-set! m 'grid grid)
-    (clear! m (lambda () (list 'type 'rock)))
-    (slot-set! m 'creatures '())))
+    (slot-set! m :grid grid)
+    (clear! m (lambda () (list :type 'rock)))
+    (slot-set! m :creatures '())))
 
 (define-generic clear!
   "Clear out the given object.")
@@ -31,25 +31,25 @@
   "Return width of object.")
 
 (define-method (width (m <map>))
-  (slot-ref m 'width))
+  (slot-ref m :width))
 
 (define-generic height
   "Return height of object.")
 
 (define-method (height (m <map>))
-  (slot-ref m 'height))
+  (slot-ref m :height))
 
 (define-generic pos
   "Get information on a position.")
 
 (define-method (pos (m <map>) x y)
-  (vector-ref (vector-ref (slot-ref m 'grid) y) x))
+  (vector-ref (vector-ref (slot-ref m :grid) y) x))
 
 (define-generic pos!
   "Set information on a position.")
 
 (define-method (pos! (m <map>) x y val)
-  (vector-set! (vector-ref (slot-ref m 'grid) y) x val))
+  (vector-set! (vector-ref (slot-ref m :grid) y) x val))
 
 (define *space-types* '()
   "The types of things a space on the map can be.")
@@ -57,7 +57,7 @@
 (define (define-space name char open doc)
   "Define a new type of map space."
   (set! *space-types* (assq-set! *space-types* name
-				 (list 'char char 'open open 'doc doc))))
+				 (list :char char :open open :doc doc))))
 
 (define-space 'floor #\. #t "Open floorspace.")
 (define-space 'rock  #\  #f "Solid rock.")
@@ -65,15 +65,15 @@
 
 (define (char name)
   "Get character representation for map position."
-  (plist-get (cdr (assq name *space-types*)) 'char))
+  (plist-get (cdr (assq name *space-types*)) :char))
 
 (define (pos-char m x y)
   "Get char for map position."
-  (char (plist-get (pos m x y) 'type)))
+  (char (plist-get (pos m x y) :type)))
 
 (define (map-pos! m x y type)
   "Set type at map position."
-  (plist-set! (pos m x y) 'type type))
+  (plist-set! (pos m x y) :type type))
 
 (define-generic draw-map
   "Draw a map to the ncurses display.")
@@ -86,28 +86,61 @@
       (nc:addch (pos-char m x y))))
   (nc:refresh))
 
-(define (add-rooms m . n)
-  "Add rooms to a map."
-  (dotimes (i (car-else n 8))
-    (add-room m (random (- (width m) 10))
-	      (random (- (height m) 10))
-	      (+ 4 (random 7))
-	      (+ 4 (random 7)))))
+(define *map* (make <map> *width* *height*))
 
-(define (add-room m x y w h)
-  "Add a room at given position of given size."
+(define (gen-map m . n)
+  "Fill the map with interesting things."
+  (let ((rooms ()))
+    (dotimes (i (car-else n 8))
+      (set! rooms (add-room rooms)))))
+
+(define (gen-room)
+  "Generate a new room within the display's dimensions."
+  (let ((x (random *width*))
+	(y (random *height*))
+	(w (round (+ 1 (abs (* 4 (random:uniform))))))
+	(h (round (+ 1 (abs (* 4 (random:uniform)))))))
+    (if (or (>= (+ x w) *width*)
+	    (< (- x w) 0)
+	    (>= (+ y h) *height*)
+	    (< (- y h) 0))
+	(gen-room)
+	(list x y w h))))
+
+(define (overlap? a b)
+  "Return #t if the two rooms overlap."
+  (let ((x first) (y second) (w third) (h fourth))
+    (not
+     (and (not (= (x a) (x b)))
+	  (not (= (y a) (y b)))
+	  (or (and (< (x a) (x b))
+		   (< (+ (x a) (w a)) (- (x b) (w b))))
+	      (and (> (x a) (x b))
+		   (> (- (x a) (w a)) (+ (x b) (w b)))))
+	  (or (and (< (y a) (y b))
+		   (< (+ (y a) (h a)) (- (y b) (h b))))
+	      (and (> (y a) (y b))
+		   (> (- (y a) (h a)) (+ (y b) (h b)))))))))
+
+(define (add-room rooms)
+  "Add a room that doesn't overlap existing rooms."
+  (let ()))
+
+(define (fill-room m room)
+  "Insert the given room into the map grid."
   (dotimes (j h)
     (dotimes (i w)
       (map-pos! m (+ x i) (+ h j) 'floor))))
 
 ;; test
+;(load "disc.sch")
+;(getcwd)
+;(add-rooms *map*)
 
-(add-rooms *map*)
+;(draw-map *map*)
+;(define *map* (make <map> (nc:getmaxx *disc-win*) (nc:getmaxy *disc-win*)))
+;(map-pos! *map* 3 3 'floor)
+;(pos *map* 3 3)
 
-(draw-map *map*)
-(define *map* (make <map> (nc:getmaxx *disc-win*) (nc:getmaxy *disc-win*)))
-(map-pos! *map* 3 3 'floor)
-(pos *map* 3 3)
-
-(nc:refresh)
-(nc:clear)
+;(nc:refresh)
+;(nc:clear)
