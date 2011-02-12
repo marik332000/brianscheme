@@ -88,10 +88,10 @@
 
 (define *map* (make <map> *width* *height*))
 
-(define (gen-map m (nrooms 4))
+(define (gen-map m)
   "Fill the map with interesting things."
   (let ((rooms '()))
-    (dotimes (i nrooms)
+    (dotimes (i (+ 4 (random 4)))
       (set! rooms (add-room rooms))
       (fill-room m (car rooms)))))
 
@@ -112,16 +112,14 @@
   "Return #t if the two rooms overlap."
   (let ((x first) (y second) (w third) (h fourth))
     (not
-     (and (not (= (x a) (x b)))
-	  (not (= (y a) (y b)))
-	  (or (and (< (x a) (x b))
-		   (< (+ (x a) (w a)) (- (x b) (w b))))
-	      (and (> (x a) (x b))
-		   (> (- (x a) (w a)) (+ (x b) (w b)))))
-	  (or (and (< (y a) (y b))
-		   (< (+ (y a) (h a)) (- (y b) (h b))))
-	      (and (> (y a) (y b))
-		   (> (- (y a) (h a)) (+ (y b) (h b)))))))))
+     (or (or (and (< (x a) (x b))
+		  (< (+ (x a) (w a)) (- (x b) (w b))))
+	     (and (> (x a) (x b))
+		  (> (- (x a) (w a)) (+ (x b) (w b)))))
+	 (or (and (< (y a) (y b))
+		  (< (+ (y a) (h a)) (- (y b) (h b))))
+	     (and (> (y a) (y b))
+		  (> (- (y a) (h a)) (+ (y b) (h b)))))))))
 
 (define (add-room rooms)
   "Add a room that doesn't overlap existing rooms."
@@ -141,6 +139,8 @@
 
 ;(define r '())
 ;(set! r (add-room r))
+
+;(define *map* (make <map> *width* *height*))
 ;(gen-map *map*)
 
 ;(draw-map *map*)
