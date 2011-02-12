@@ -107,13 +107,15 @@
 (define (gen-map m)
   "Fill the map with interesting things."
   (let ((rooms '()))
-    (dotimes (i (+ 4 (random 4)))
+    (dotimes (i (+ 6 (random 6)))
       (set! rooms (add-room rooms))
       (fill-room m (car rooms))
+      (draw-map m)
       (if (> (length rooms) 1)
-	  (let ((a (car rooms))
-		(b (randn (cdr rooms))))
-	    (add-path m (first a) (second a) (first b) (second b) #t))))))
+	  (dotimes (i (+ 1 (random 4)))
+	    (let ((a (car rooms))
+		  (b (randn (cdr rooms))))
+	      (add-path m (first a) (second a) (first b) (second b) #t)))))))
 
 (define (gen-room)
   "Generate a new room within the display's dimensions."
@@ -157,18 +159,20 @@
 
 (define (add-path m x y gx gy start)
   "Create a hallway between (x, y) and (dx, dy)."
-  (db (sprintf "add-path (%a %a) (%a %a) %a" x y gx gy start))
-  (let ((open (pos-open? m x y)))
-    (unless (and (not start) open)
-	    (if (not open)
-		(map-pos! m x y 'hall))
-	    (let ((dx (signum (- gx x)))
-		  (dy (signum (- gy y))))
-	      (cond
-	       ((= x dx) (add-path m x (+ y dy) gx gy open))
-	       ((= y dy) (add-path m (+ x dx) y gx gy open))
-	       ((zero? (random 2)) (add-path m x (+ y dy) gx gy open))
-	       (else (add-path m (+ x dx) y gx gy open)))))))
+  (nc:mvaddch y x #\#)
+  (nc:refresh)
+  (if (not (and (= x gx) (= y gy)))
+      (let ((open (pos-open? m x y)))
+	(unless (and (not start) open)
+		(if (not open)
+		    (map-pos! m x y 'hall))
+		(let ((dx (signum (- gx x)))
+		      (dy (signum (- gy y))))
+		  (cond
+		   ((= x gx) (add-path m x (+ y dy) gx gy open))
+		   ((= y gy) (add-path m (+ x dx) y gx gy open))
+		   ((zero? (random 2)) (add-path m x (+ y dy) gx gy open))
+		   (else (add-path m (+ x dx) y gx gy open))))))))
 
 (define *debug* (open-output-port "debug"))
 (define (db form)
