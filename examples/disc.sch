@@ -67,9 +67,21 @@
   "Get character representation for map position."
   (plist-get (cdr (assq name *space-types*)) :char))
 
+(define (open? name)
+  "Return #t if space type is open."
+  (plist-get (cdr (assq name *space-types*)) :open))
+
 (define (pos-char m x y)
   "Get char for map position."
   (char (plist-get (pos m x y) :type)))
+
+(define (pos-type m x y)
+  "Type of space at position."
+  (plist-get (pos m x y) :type))
+
+(define (pos-open? m x y)
+  "Return #t if position is open."
+  (open? (plist-get (pos m x y) :type)))
 
 (define (map-pos! m x y type)
   "Set type at map position."
@@ -98,9 +110,10 @@
     (dotimes (i (+ 4 (random 4)))
       (set! rooms (add-room rooms))
       (fill-room m (car rooms))
-      (let ((a (car rooms))
-	    (b (randn (cdr rooms))))
-	(add-path m (first a) (second a) (first b) (second b) #t)))))
+      (if (> (length rooms) 1)
+	  (let ((a (car rooms))
+		(b (randn (cdr rooms))))
+	    (add-path m (first a) (second a) (first b) (second b) #t))))))
 
 (define (gen-room)
   "Generate a new room within the display's dimensions."
@@ -120,13 +133,13 @@
   (let ((x first) (y second) (w third) (h fourth))
     (not
      (or (or (and (< (x a) (x b))
-		  (< (+ (x a) (w a)) (- (x b) (w b))))
+		  (> (- (- (x b) (w b)) (+ (x a) (w a))) 1))
 	     (and (> (x a) (x b))
-		  (> (- (x a) (w a)) (+ (x b) (w b)))))
+		  (> (- (- (x a) (w a)) (+ (x b) (w b))) 1)))
 	 (or (and (< (y a) (y b))
-		  (< (+ (y a) (h a)) (- (y b) (h b))))
+		  (> (- (- (y b) (h b)) (+ (y a) (h a))) 1))
 	     (and (> (y a) (y b))
-		  (> (- (y a) (h a)) (+ (y b) (h b)))))))))
+		  (> (- (- (y a) (h a)) (+ (y b) (h b))) 1)))))))
 
 (define (add-room rooms)
   "Add a room that doesn't overlap existing rooms."
@@ -144,22 +157,28 @@
 
 (define (add-path m x y gx gy start)
   "Create a hallway between (x, y) and (dx, dy)."
-  (let ((open (plist-get (pos m x y) :open)))
+  (db (sprintf "add-path (%a %a) (%a %a) %a" x y gx gy start))
+  (let ((open (pos-open? m x y)))
     (unless (and (not start) open)
-	    (if open
+	    (if (not open)
 		(map-pos! m x y 'hall))
 	    (let ((dx (signum (- gx x)))
 		  (dy (signum (- gy y))))
 	      (cond
-	       ((= x dx)) (add-path m x (+ y dy) gx gy open)
-	       ((= y dy)) (add-path m (+ x dx) y gx gy open)
-	       ((zero? random 0) (add-path m x (+ y dy) gx gy open))
+	       ((= x dx) (add-path m x (+ y dy) gx gy open))
+	       ((= y dy) (add-path m (+ x dx) y gx gy open))
+	       ((zero? (random 2)) (add-path m x (+ y dy) gx gy open))
 	       (else (add-path m (+ x dx) y gx gy open)))))))
+
+(define *debug* (open-output-port "debug"))
+(define (db form)
+  (write-port form *debug*)
+  (write-char #\newline *debug*)
+  (flush-output *debug*))
 
 ;; test
 
-;(define r '())
-;(set! r (add-room r))
+;(load "disc.sch")
 
 ;(define *map* (make <map> *width* *height*))
 ;(gen-map *map*)
