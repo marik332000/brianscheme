@@ -88,12 +88,19 @@
 
 (define *map* (make <map> *width* *height*))
 
+(define (randn lst)
+  "Return random element from the list."
+  (list-ref lst (random (length lst))))
+
 (define (gen-map m)
   "Fill the map with interesting things."
   (let ((rooms '()))
     (dotimes (i (+ 4 (random 4)))
       (set! rooms (add-room rooms))
-      (fill-room m (car rooms)))))
+      (fill-room m (car rooms))
+      (let ((a (car rooms))
+	    (b (randn (cdr rooms))))
+	(add-path m (first a) (second a) (first b) (second b) #t)))))
 
 (define (gen-room)
   "Generate a new room within the display's dimensions."
@@ -134,6 +141,20 @@
     (dotimes (i (+ 1 (* 2 (third room))))
       (map-pos! m (+ (- (first room)  (third room))  i)
 		  (+ (- (second room) (fourth room)) j) 'floor))))
+
+(define (add-path m x y gx gy start)
+  "Create a hallway between (x, y) and (dx, dy)."
+  (let ((open (plist-get (pos m x y) :open)))
+    (unless (and (not start) open)
+	    (if open
+		(map-pos! m x y 'hall))
+	    (let ((dx (signum (- gx x)))
+		  (dy (signum (- gy y))))
+	      (cond
+	       ((= x dx)) (add-path m x (+ y dy) gx gy open)
+	       ((= y dy)) (add-path m (+ x dx) y gx gy open)
+	       ((zero? random 0) (add-path m x (+ y dy) gx gy open))
+	       (else (add-path m (+ x dx) y gx gy open)))))))
 
 ;; test
 
