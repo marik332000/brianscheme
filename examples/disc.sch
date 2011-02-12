@@ -88,11 +88,12 @@
 
 (define *map* (make <map> *width* *height*))
 
-(define (gen-map m . n)
+(define (gen-map m (nrooms 4))
   "Fill the map with interesting things."
-  (let ((rooms ()))
-    (dotimes (i (car-else n 8))
-      (set! rooms (add-room rooms)))))
+  (let ((rooms '()))
+    (dotimes (i nrooms)
+      (set! rooms (add-room rooms))
+      (fill-room m (car rooms)))))
 
 (define (gen-room)
   "Generate a new room within the display's dimensions."
@@ -124,18 +125,23 @@
 
 (define (add-room rooms)
   "Add a room that doesn't overlap existing rooms."
-  (let ()))
+  (let ((room (gen-room)))
+    (if (any? (curry overlap? room) rooms)
+	(add-room rooms)
+	(cons room rooms))))
 
 (define (fill-room m room)
   "Insert the given room into the map grid."
-  (dotimes (j h)
-    (dotimes (i w)
-      (map-pos! m (+ x i) (+ h j) 'floor))))
+  (dotimes (j (+ 1 (* 2 (fourth room))))
+    (dotimes (i (+ 1 (* 2 (third room))))
+      (map-pos! m (+ (- (first room)  (third room))  i)
+		  (+ (- (second room) (fourth room)) j) 'floor))))
 
 ;; test
-;(load "disc.sch")
-;(getcwd)
-;(add-rooms *map*)
+
+;(define r '())
+;(set! r (add-room r))
+;(gen-map *map*)
 
 ;(draw-map *map*)
 ;(define *map* (make <map> (nc:getmaxx *disc-win*) (nc:getmaxy *disc-win*)))
