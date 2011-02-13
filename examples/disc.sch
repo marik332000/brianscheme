@@ -110,7 +110,6 @@
     (dotimes (i (+ 6 (random 6)))
       (set! rooms (add-room rooms))
       (fill-room m (car rooms))
-      (draw-map m)
       (if (> (length rooms) 1)
 	  (dotimes (i (+ 1 (random 4)))
 	    (let ((a (car rooms))
@@ -159,8 +158,6 @@
 
 (define (add-path m x y gx gy start)
   "Create a hallway between (x, y) and (dx, dy)."
-  (nc:mvaddch y x #\#)
-  (nc:refresh)
   (if (not (and (= x gx) (= y gy)))
       (let ((open (pos-open? m x y)))
 	(unless (and (not start) open)
