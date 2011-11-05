@@ -10,7 +10,7 @@ OBJECTS = $(subst .c,.o,$(SOURCES))
 
 IMAGE = boot.img
 
-LDFLAGS = -lz -lffi -lltdl -lm -rdynamic
+LDLIBS = -lz -lffi -lltdl -lm -rdynamic
 
 CC = gcc
 
@@ -36,10 +36,10 @@ bsch: bschsfx $(IMAGE)
 	chmod +x $@
 
 bsch.preboot: $(OBJECTS) bsch.o $(HEADERS)
-	$(CC) $(LDFLAGS) -o $@ $(OBJECTS) bsch.o
+	$(CC) $(LDFLAGS) -o $@ $(OBJECTS) bsch.o $(LDLIBS)
 
 bschsfx: $(OBJECTS) bschsfx.o $(HEADERS)
-	$(CC) $(LDFLAGS) -o $@ $(OBJECTS) bschsfx.o
+	$(CC) $(LDFLAGS) -o $@ $(OBJECTS) bschsfx.o $(LDLIBS)
 	perl padsfx.pl $@
 
 bschsfx.o: bsch.c
