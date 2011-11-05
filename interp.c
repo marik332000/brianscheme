@@ -318,6 +318,42 @@ DEFUN1(ash_proc) {
   return make_fixnum(result);
 }
 
+DEFUN1(sin_fixnum_proc) {
+  long input = LONG(FIRST);
+  double result = sin(input);
+  return make_real(result);
+}
+
+DEFUN1(sin_real_proc) {
+  double input = DOUBLE(FIRST);
+  double result = sin(input);
+  return make_real(result);
+}
+
+DEFUN1(cos_fixnum_proc) {
+  long input = LONG(FIRST);
+  double result = cos(input);
+  return make_real(result);
+}
+
+DEFUN1(cos_real_proc) {
+  double input = DOUBLE(FIRST);
+  double result = cos(input);
+  return make_real(result);
+}
+
+DEFUN1(tan_fixnum_proc) {
+  long input = LONG(FIRST);
+  double result = tan(input);
+  return make_real(result);
+}
+
+DEFUN1(tan_real_proc) {
+  double input = DOUBLE(FIRST);
+  double result = tan(input);
+  return make_real(result);
+}
+
 DEFUN1(sqrt_fixnum_proc) {
   long input = LONG(FIRST);
   double result = sqrt(input);
@@ -1542,6 +1578,12 @@ void init_prim_environment(definer defn) {
   add_procedure("%logor", logor_proc);
   add_procedure("%logxor", logxor_proc);
   add_procedure("%ash", ash_proc);
+  add_procedure("%fixnum-sin", sin_fixnum_proc);
+  add_procedure("%real-sin", sin_real_proc);
+  add_procedure("%fixnum-cos", cos_fixnum_proc);
+  add_procedure("%real-cos", cos_real_proc);
+  add_procedure("%fixnum-tan", tan_fixnum_proc);
+  add_procedure("%real-tan", tan_real_proc);
   add_procedure("%fixnum-sqrt", sqrt_fixnum_proc);
   add_procedure("%real-sqrt", sqrt_real_proc);
   add_procedure("%fixnum-log", log_fixnum_proc);

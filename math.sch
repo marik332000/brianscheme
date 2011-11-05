@@ -176,6 +176,27 @@ appropriate operation for the types they end up as"
   (make-rat (* (numerator a) (denominator b))
 	    (* (denominator a) (numerator b))))
 
+(define (sin x)
+  "Square root."
+  (assert-types (x number?))
+  (if (integer? x)
+      (%fixnum-sin x)
+      (%real-sin x)))
+
+(define (cos x)
+  "Square root."
+  (assert-types (x number?))
+  (if (integer? x)
+      (%fixnum-cos x)
+      (%real-cos x)))
+
+(define (tan x)
+  "Square root."
+  (assert-types (x number?))
+  (if (integer? x)
+      (%fixnum-tan x)
+      (%real-tan x)))
+
 (define (sqrt x)
   "Square root."
   (assert-types (x number?))
